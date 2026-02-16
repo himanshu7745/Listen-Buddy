@@ -154,6 +154,11 @@ cd Listen-Buddy
 
 ------------------------------------------------------------------------
 
+# 📦 Download APK
+
+[⬇ Download Latest APK](https://github.com/himanshu7745/Listen-Buddy/releases/download/v1.0.0/app-release.apk)
+
+------------------------------------------------------------------------
 
 # 🌱 Future Scope
 
