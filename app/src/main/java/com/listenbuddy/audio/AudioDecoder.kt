@@ -18,7 +18,7 @@ class AudioDecoder(
     var channelCount = 0
 
     @Volatile
-    private var isReleased = false  // Track release state
+    private var isReleased = false
 
     fun prepare() {
         extractor = MediaExtractor()
@@ -45,13 +45,13 @@ class AudioDecoder(
         val bufferInfo = MediaCodec.BufferInfo()
         var isEOS = false
 
-        while (!isReleased) {  // Check if released
+        while (!isReleased) {
 
             if (!isEOS) {
                 try {
                     val inputIndex = codec.dequeueInputBuffer(10000)
                     if (inputIndex >= 0) {
-                        if (isReleased) break  // Double check before getting buffer
+                        if (isReleased) break
 
                         val inputBuffer = codec.getInputBuffer(inputIndex) ?: break
                         val sampleSize = extractor.readSampleData(inputBuffer, 0)
@@ -71,7 +71,6 @@ class AudioDecoder(
                         }
                     }
                 } catch (e: IllegalStateException) {
-                    // Codec was released, exit gracefully
                     break
                 }
             }
@@ -80,7 +79,7 @@ class AudioDecoder(
                 val outputIndex = codec.dequeueOutputBuffer(bufferInfo, 10000)
 
                 if (outputIndex >= 0) {
-                    if (isReleased) break  // Check before getting buffer
+                    if (isReleased) break
 
                     val outputBuffer = codec.getOutputBuffer(outputIndex) ?: break
                     val pcmData = ByteArray(bufferInfo.size)
@@ -98,14 +97,13 @@ class AudioDecoder(
                     }
                 }
             } catch (e: IllegalStateException) {
-                // Codec was released, exit gracefully
                 break
             }
         }
     }
 
     fun release() {
-        isReleased = true  // Set flag first
+        isReleased = true
 
         try {
             if (::codec.isInitialized) {

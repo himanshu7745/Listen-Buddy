@@ -54,8 +54,6 @@ fun ReceiverScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     val context = LocalContext.current
-
-    // CRITICAL FIX: Stop discovery and disconnect when leaving screen
     DisposableEffect(Unit) {
         onDispose {
             viewModel.stopDiscovery()
@@ -84,7 +82,6 @@ fun ReceiverScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            // Discovery Button
             Button(
                 onClick = { viewModel.toggleDiscovery(context) },
                 modifier = Modifier
@@ -117,7 +114,6 @@ fun ReceiverScreen(
                 )
             }
 
-            // Status
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
@@ -129,7 +125,6 @@ fun ReceiverScreen(
                 )
             }
 
-            // Connected server with disconnect button
             uiState.connectedServer?.let { server ->
                 Surface(
                     modifier = Modifier.fillMaxWidth(),

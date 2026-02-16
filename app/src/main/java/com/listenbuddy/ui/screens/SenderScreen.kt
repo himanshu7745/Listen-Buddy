@@ -57,7 +57,6 @@ fun SenderScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
 
-    // CRITICAL FIX: Stop broadcast when leaving screen
     DisposableEffect(Unit) {
         onDispose {
             viewModel.stopBroadcast()
@@ -96,7 +95,6 @@ fun SenderScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
 
-            // Choose File
             Button(
                 onClick = {
                     val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -111,10 +109,8 @@ fun SenderScreen(
                 Text("Choose File")
             }
 
-            // File Name Display
             Text(uiState.selectedFileName)
 
-            // Server Name
             OutlinedTextField(
                 value = uiState.serverName,
                 onValueChange = { viewModel.setServerName(it) },
@@ -124,7 +120,6 @@ fun SenderScreen(
                 singleLine = true
             )
 
-            // Connected Clients Display
             if (uiState.isBroadcasting) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -139,7 +134,6 @@ fun SenderScreen(
                 }
             }
 
-            // Broadcast Button
             Button(
                 onClick = {
                     viewModel.toggleBroadcast(context)

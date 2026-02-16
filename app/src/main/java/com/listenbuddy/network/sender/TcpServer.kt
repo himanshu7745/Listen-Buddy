@@ -1,7 +1,11 @@
 package com.listenbuddy.network.sender
 
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.io.DataOutputStream
 import java.net.ServerSocket
 import java.net.Socket
@@ -52,8 +56,6 @@ class TcpServer(
     ): ClientConnection {
 
         val output = DataOutputStream(socket.getOutputStream())
-
-        // 🔹 Send header immediately
         output.writeInt(sampleRate)
         output.writeInt(channelCount)
         output.flush()
@@ -77,7 +79,7 @@ class TcpServer(
 
     fun sendToAll(pcm: ByteArray) {
         for (client in clients) {
-            client.channel.trySend(pcm) // non-blocking
+            client.channel.trySend(pcm)
         }
     }
 
