@@ -14,42 +14,65 @@ import java.net.DatagramSocket
 class DiscoveryListener(context: Context) {
 
     private var job: Job? = null
-    val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-    val lock: WifiManager.MulticastLock? = wifi.createMulticastLock("discovery_lock")
+    private var socket: DatagramSocket? = null
+
+    private val wifi =
+        context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+
+    private val lock: WifiManager.MulticastLock =
+        wifi.createMulticastLock("discovery_lock")
+
     fun start(
         scope: CoroutineScope,
         onServerFound: (name: String, ip: String, tcpPort: Int) -> Unit
     ) {
-        lock?.isHeld?.let { if (!it) lock.acquire() }
+
+        if (job?.isActive == true) return // prevent double start
+
+        lock.acquire()
+
         job = scope.launch(Dispatchers.IO) {
-
-            val socket = DatagramSocket(50000)
-            val buffer = ByteArray(1024)
-
-            while (isActive) {
-
-                val packet = DatagramPacket(buffer, buffer.size)
-                socket.receive(packet)
-
-                val message = String(packet.data, 0, packet.length)
-
-                if (message.startsWith("DISCOVER")) {
-                    val parts = message.split("|")
-                    val name = parts[1]
-                    val port = parts[2].toInt()
-
-                    val senderIp = packet.address.hostAddress
-
-                    onServerFound(name, senderIp, port)
+            try {
+                socket = DatagramSocket(null).apply {
+                    reuseAddress = true
+                    bind(java.net.InetSocketAddress(50000))
                 }
-            }
 
-            socket.close()
+                val buffer = ByteArray(1024)
+
+                while (isActive) {
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    socket?.receive(packet)
+
+                    val message = String(packet.data, 0, packet.length)
+
+                    if (message.startsWith("DISCOVER")) {
+                        val parts = message.split("|")
+                        if (parts.size >= 3) {
+                            val name = parts[1]
+                            val port = parts[2].toInt()
+                            val senderIp = packet.address.hostAddress
+
+                            onServerFound(name, senderIp, port)
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                socket?.close()
+                socket = null
+                if (lock.isHeld) lock.release()
+            }
         }
     }
 
     fun stop() {
-        lock?.release()
         job?.cancel()
+        job = null
+
+        socket?.close()
+        socket = null
+
+        if (lock.isHeld) lock.release()
     }
 }

@@ -9,12 +9,16 @@ import com.listenbuddy.network.receiver.DiscoveryListener
 import com.listenbuddy.network.receiver.TcpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.DataInputStream
 
@@ -33,14 +37,13 @@ class ReceiverViewModel : ViewModel() {
     private var discoveryListener: DiscoveryListener? = null
     private val tcpClient = TcpClient()
 
-    // CRITICAL FIX: Track audio player and connection job
     private var audioPlayer: AudioPlayer? = null
     private var connectionJob: Job? = null
+    private var playbackChannel: Channel<ByteArray>? = null
+    private var playbackJob: Job? = null
 
     fun toggleDiscovery(context: Context) {
-        val current = _uiState.value
-
-        if (!current.isDiscovering) {
+        if (!_uiState.value.isDiscovering) {
             startDiscovery(context)
         } else {
             stopDiscovery()
@@ -57,9 +60,7 @@ class ReceiverViewModel : ViewModel() {
             )
         }
 
-        discoveryListener = DiscoveryListener(
-            context = context
-        )
+        discoveryListener = DiscoveryListener(context)
 
         discoveryListener?.start(viewModelScope) { name, ip, port ->
 
@@ -92,12 +93,10 @@ class ReceiverViewModel : ViewModel() {
             )
         }
     }
-
     fun connectToServer(server: Server) {
-        // CRITICAL FIX: Disconnect previous connection first
+
         disconnect()
 
-        // CRITICAL FIX: Update state to show connection attempt
         _uiState.update {
             it.copy(
                 connectedServer = server,
@@ -106,8 +105,10 @@ class ReceiverViewModel : ViewModel() {
         }
 
         connectionJob = viewModelScope.launch(Dispatchers.IO) {
+
             try {
                 val success = tcpClient.connect(server.address, server.port)
+
                 if (!success) {
                     _uiState.update {
                         it.copy(
@@ -119,13 +120,15 @@ class ReceiverViewModel : ViewModel() {
                 }
 
                 val socket = tcpClient.getSocket() ?: return@launch
-                val inputStream = DataInputStream(BufferedInputStream(socket.getInputStream()))
+                socket.receiveBufferSize = 64 * 1024
 
-                // 1. READ HEADER FIRST
+                val inputStream =
+                    DataInputStream(BufferedInputStream(socket.getInputStream()))
+
+                // 1️⃣ Read header
                 val sampleRate = inputStream.readInt()
                 val channels = inputStream.readInt()
 
-                // 2. INITIALIZE PLAYER WITH CORRECT SETTINGS
                 audioPlayer = AudioPlayer(sampleRate, channels)
 
                 _uiState.update {
@@ -134,36 +137,48 @@ class ReceiverViewModel : ViewModel() {
                     )
                 }
 
-                // 3. START DATA LOOP
+                playbackChannel = Channel(capacity = 10)
+
+                playbackJob = launch {
+                    for (frame in playbackChannel!!) {
+                        audioPlayer?.play(frame)
+                    }
+                }
+
                 while (isActive) {
                     val size = inputStream.readInt()
                     if (size <= 0) break
 
                     val buffer = ByteArray(size)
                     inputStream.readFully(buffer)
-                    audioPlayer?.play(buffer)
+
+                    playbackChannel?.trySend(buffer)
                 }
+
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.update {
                     it.copy(
                         connectedServer = null,
-                        discoveryStatus = "Connection Lost: ${e.message}"
+                        discoveryStatus = "Connection Lost"
                     )
                 }
             } finally {
-                // CRITICAL FIX: Clean up audio player when connection ends
-                cleanupConnection()
+                withContext(NonCancellable) {
+                    cleanupConnection()
+                }
             }
         }
     }
 
     fun disconnect() {
-        // CRITICAL FIX: Cancel connection job
+
         connectionJob?.cancel()
         connectionJob = null
 
-        cleanupConnection()
+        viewModelScope.launch {
+            cleanupConnection()
+        }
 
         _uiState.update {
             it.copy(
@@ -173,21 +188,26 @@ class ReceiverViewModel : ViewModel() {
         }
     }
 
-    // CRITICAL FIX: Proper cleanup method
-    private fun cleanupConnection() {
+
+    private suspend fun cleanupConnection() {
+        playbackJob?.cancelAndJoin()
+        playbackJob = null
+
+        playbackChannel?.close()
+        playbackChannel = null
+
+        // 2️⃣ Now safe to release AudioTrack
         try {
             audioPlayer?.release()
-            audioPlayer = null
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (_: Exception) {}
+
+        audioPlayer = null
 
         try {
             tcpClient.disconnect()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (_: Exception) {}
     }
+
 
     override fun onCleared() {
         super.onCleared()

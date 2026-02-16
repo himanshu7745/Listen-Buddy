@@ -19,28 +19,30 @@ class DiscoveryBroadcaster(
 
     fun start(scope: CoroutineScope) {
         job = scope.launch(Dispatchers.IO) {
-
             val socket = DatagramSocket()
             socket.broadcast = true
 
-            val message = "DISCOVER|$serverName|$tcpPort"
-            val data = message.toByteArray()
-            val broadcastAddress = getBroadcastAddress()
+            try {
+                val message = "DISCOVER|$serverName|$tcpPort"
+                val data = message.toByteArray()
+                val broadcastAddress = getBroadcastAddress()
 
-            while (isActive) {
-                val packet = DatagramPacket(
-                    data,
-                    data.size,
-                    broadcastAddress,
-                    50000
-                )
-                socket.send(packet)
-                delay(1000)
+                while (isActive) {
+                    val packet = DatagramPacket(
+                        data,
+                        data.size,
+                        broadcastAddress,
+                        50000
+                    )
+                    socket.send(packet)
+                    delay(1000)
+                }
+            } finally {
+                socket.close()
             }
-
-            socket.close()
         }
     }
+
 
     fun stop() {
         job?.cancel()
